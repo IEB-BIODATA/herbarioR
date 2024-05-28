@@ -5,10 +5,10 @@
 get_species_data <- function(species_names, known_species_file, max_dist = 0.2) {
   
   # Read the known species from the CSV file
-  known_species_df <- read.csv("known_species.csv", header = TRUE, stringsAsFactors = FALSE)
+  known_species_df <- read.csv("known_species.csv", header = FALSE, stringsAsFactors = FALSE)
   
-  # Assuming the species names are in a column named "species_name"
-  known_species <- as.character(known_species_df$x)
+  # Readinf the names
+  known_species <- as.character(known_species_df$V1)
   
   # Ensure the input vector is a character vector
   species_names <- as.character(species_names)
@@ -50,7 +50,7 @@ get_species_data <- function(species_names, known_species_file, max_dist = 0.2) 
       
       if (length(parsed_content$results) > 0) {
         # Extract specific fields from the results
-        fields_to_extract <- c(1,3,6,7,9,10,18,19,22)
+        fields_to_extract <- c("id","scientific_name","type")
         extracted_data <- parsed_content$results[, fields_to_extract, drop = FALSE]
         
         # Add original and matched names to the extracted data
@@ -71,7 +71,7 @@ get_species_data <- function(species_names, known_species_file, max_dist = 0.2) 
 }
 
   
-
+##IN PROGRESS
 #### Define a function to get data for a single ID
 get_id_data <- function(id) {
   url <- paste0("https://api.herbariodigital.cl/species/", id, "/?format=json")
