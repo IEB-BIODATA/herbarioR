@@ -7,7 +7,7 @@ source("functions.R")
 
 #example
 #create a list of species to test
-species2test <- c("plantachina quenoexuste","Tupa mucronata", "Crassula paludosa", "Dysphania multifida", "Mimulus longipes")
+species2test <- c("Plantachina quenoexiste","Tupa mucronata", "Crassula paludosa", "Dysphania multifida", "Mimulus longipes")
 
 
 #Aplying the function
