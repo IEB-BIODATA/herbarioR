@@ -1,3 +1,4 @@
+
 ## API Documentation: https://api.herbariodigital.cl/swagger-ui/
 
 
@@ -88,5 +89,91 @@ get_species_data <- function(species_names, known_species_file, max_dist = 0.2) 
 
 
 ##IN PROGRESS
-#### Define a function to get data for a list of IDs
-#### Define a function to get data for a single Family name
+# Define a function to get data for a list of names
+# Function to get the closest match for a species name
+get_closest_match <- function(species_name, max_dist = 0.15) {
+  require(stringdist)
+  known_species_df <- read.csv("known_species.csv", 
+                               header = FALSE, 
+                               stringsAsFactors = FALSE)
+  known_species <- as.character(known_species_df$V1)
+  distances <- stringdist::stringdist(tolower(species_name), 
+                                      tolower(known_species), 
+                                      method = "jw",
+                                      q=4)
+  min_dist <- min(distances)
+  val<-distances <= max_dist
+  if (min_dist <= max_dist) {
+    return(known_species[which.min(distances)])
+  } else if (min_dist >= max_dist) {
+    return(NA)
+  }
+}
+
+
+  
+
+get_taxonomy <- function(species_name) {
+  require(jsonlite)
+  require(dplyr)
+  workname<- sapply(species_name, 
+                   get_closest_match)
+  param<-c("id","scientific_name",  "genus_name", 
+           "family", "order", "class_name",
+           "division", "kingdom")
+  p<-paste0(param, ".id")
+  url <- paste0("https://api.herbariodigital.cl/species_list/?format=json&search=", 
+               URLencode(workname))
+  df<-lapply(url,function(x) {
+    a<-fromJSON(x)$results
+    #a<-a[a$type=="species",]
+    a$genus<-NULL
+    a<-a[,param]
+    a<-flatten(a)
+  })
+  df<-bind_rows(df)
+  df[,p]<-NULL
+  return(df)
+}
+  # Assuming get_closest_match is defined elsewhere in your code
+  workname <- sapply(species_name, get_closest_match)
+  
+  param <- c("id", "scientific_name", "genus_name", 
+             "family", "order", "class_name",
+             "division", "kingdom")
+  p <- paste0(param, ".id")
+  
+  url <- paste0("https://api.herbariodigital.cl/species_list/?format=json&search=", 
+                URLencode(workname))
+  
+  df <- lapply(url, function(x) {
+    # Try to get data from the API
+    tryCatch({
+      a <- fromJSON(x)$results
+      if (!is.null(a)) {
+        #a <- a[a$type == "species", ]
+        a$genus <- NULL
+        # Check which columns are present before subsetting
+        present_columns <- param[param %in% names(a)]
+        a <- a[, present_columns, drop = FALSE] 
+        a <- flatten(a)
+        return(a)
+      } else {
+        warning(paste("No results found for URL:", x))
+        return(NULL)
+      }
+    }, error = function(e) {
+      warning(paste("Error processing URL:", x, "Message:", e$message))
+      return(NULL)
+    })
+  })
+  
+  df <- bind_rows(df, .id = "source")
+  df[, p[p %in% names(df)]] <- NULL
+  
+  return(df)
+}
+
+
+
+#### Define a function to get data for a single Family

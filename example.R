@@ -5,9 +5,10 @@ library(stringdist)
 source("functions.R")
 
 
-#example
+#Examples
+#Example 1
 #create a list of species to test
-species2test <- c("Plantachina quenoexiste","Tupa mucronata", "Crassula paludosa", "Dysphania multifida", "Mimulus longipes")
+species2test <- c("Plantachina quenoexiste","Tupa mucronata", "Crassula paludosa", "Dysphania multifida", "Mimulus longipes","Lathyrus ovalifolius var. mucronatus")
 
 
 #Aplying the function
@@ -15,7 +16,7 @@ species2test <- c("Plantachina quenoexiste","Tupa mucronata", "Crassula paludosa
 (test <- get_species_data(species2test, known_species))
 
 
-#second example cactus
+#Example 2 cactus
 cactus <- read.csv("cactus.chile.csv", header = TRUE, stringsAsFactors = FALSE)
 
 
