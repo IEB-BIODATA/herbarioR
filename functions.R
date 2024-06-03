@@ -9,7 +9,7 @@ get_species_data <- function(species_names, known_species_file, max_dist = 0.2) 
   known_species_df <- read.csv("known_species.csv", header = FALSE, stringsAsFactors = FALSE)
 
   # Reading the names
-  known_species <- as.character(known_species_df$V1)
+  known_species <- as.character(known_species_df$V2)
 
   # Ensure the input vector is a character vector
   species_names <- as.character(species_names)
@@ -90,13 +90,15 @@ get_species_data <- function(species_names, known_species_file, max_dist = 0.2) 
 
 ##IN PROGRESS
 # Define a function to get data for a list of names
+
 # Function to get the closest match for a species name
 get_closest_match <- function(species_name, max_dist = 0.15) {
   require(stringdist)
-  known_species_df <- read.csv("known_species.csv", 
+  known_species_df <- read.csv("known_species_id_type.csv", 
                                header = FALSE, 
-                               stringsAsFactors = FALSE)
-  known_species <- as.character(known_species_df$V1)
+                               stringsAsFactors = FALSE,
+                               sep = ";")
+  known_species <- as.character(known_species_df$V2)
   distances <- stringdist::stringdist(tolower(species_name), 
                                       tolower(known_species), 
                                       method = "jw",
@@ -104,7 +106,11 @@ get_closest_match <- function(species_name, max_dist = 0.15) {
   min_dist <- min(distances)
   val<-distances <= max_dist
   if (min_dist <= max_dist) {
-    return(known_species[which.min(distances)])
+    hj<-known_species[which.min(distances)]
+    hj<-known_species_df[known_species_df$V2==hj,]
+    hj<-cbind.data.frame(species_name, hj)
+    colnames(hj)<-c("input_name","id_match", "matched_name", "type")
+    return(hj)
   } else if (min_dist >= max_dist) {
     return(NA)
   }
@@ -112,68 +118,56 @@ get_closest_match <- function(species_name, max_dist = 0.15) {
 
 
   
+#####################################################################################
+
 
 get_taxonomy <- function(species_name) {
   require(jsonlite)
   require(dplyr)
-  workname<- sapply(species_name, 
-                   get_closest_match)
-  param<-c("id","scientific_name",  "genus_name", 
-           "family", "order", "class_name",
-           "division", "kingdom")
-  p<-paste0(param, ".id")
-  url <- paste0("https://api.herbariodigital.cl/species_list/?format=json&search=", 
-               URLencode(workname))
-  df<-lapply(url,function(x) {
-    a<-fromJSON(x)$results
-    #a<-a[a$type=="species",]
-    a$genus<-NULL
-    a<-a[,param]
-    a<-flatten(a)
-  })
-  df<-bind_rows(df)
-  df[,p]<-NULL
-  return(df)
-}
-  # Assuming get_closest_match is defined elsewhere in your code
-  workname <- sapply(species_name, get_closest_match)
-  
-  param <- c("id", "scientific_name", "genus_name", 
+  param <- c("id", "scientific_name", "genus",
              "family", "order", "class_name",
              "division", "kingdom")
   p <- paste0(param, ".id")
+  api_url<-"https://api.herbariodigital.cl/species_list/?format=json&search="
   
-  url <- paste0("https://api.herbariodigital.cl/species_list/?format=json&search=", 
-                URLencode(workname))
-  
-  df <- lapply(url, function(x) {
-    # Try to get data from the API
-    tryCatch({
-      a <- fromJSON(x)$results
-      if (!is.null(a)) {
-        #a <- a[a$type == "species", ]
-        a$genus <- NULL
-        # Check which columns are present before subsetting
-        present_columns <- param[param %in% names(a)]
-        a <- a[, present_columns, drop = FALSE] 
-        a <- flatten(a)
-        return(a)
-      } else {
-        warning(paste("No results found for URL:", x))
-        return(NULL)
+  workname <- lapply(species_name, get_closest_match)
+  df <- lapply(workname, function(x) {
+    url <- paste0(api_url, 
+                  URLencode(x$matched_name)) 
+    a <- fromJSON(url)$results
+    a<-a[a$determined==T,]
+    if (!is.null(a)) {
+      if (any(a$type == "synonymy")&nrow(a)==1) {
+        b<-a$species[[1]]
+        a[,param]<-b[,param]
       }
-    }, error = function(e) {
-      warning(paste("Error processing URL:", x, "Message:", e$message))
-      return(NULL)
-    })
+      present_columns <- param[param %in% names(a)]
+      a <- a[, present_columns, drop = FALSE] 
+      a <- flatten(a)
+      rownames(a)<-NULL
+      rownames(x)<-NULL
+      a<-cbind.data.frame(x,a)
+      return(a)
+    } 
   })
   
   df <- bind_rows(df, .id = "source")
   df[, p[p %in% names(df)]] <- NULL
-  
+  df[,"source"] <- NULL
+  colnames(df)<-c("input_name","id_match",
+                 "matched_name","type","valid_name_id",
+                 "valid_name","kingdom","genus",
+                 "family","order","class_name","division")
+  df<-df[,c("type","input_name","id_match","matched_name",
+          "valid_name_id","valid_name","genus","family",
+          "order","class_name","division","kingdom")]
   return(df)
 }
+########################################################################################################
 
 
 
+
+
+########################################################################################################
 #### Define a function to get data for a single Family

@@ -25,3 +25,6 @@ cactus <- read.csv("cactus.chile.csv", header = TRUE, stringsAsFactors = FALSE)
 dim(test2)
 dim(cactus)
 no_catalog <- cactus[!cactus$Specie.name %in% known_species,]
+
+#Example 3
+get_taxonomy(species2test)
