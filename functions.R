@@ -1,114 +1,28 @@
-
-## API Documentation: https://api.herbariodigital.cl/swagger-ui/
-
-
-# Define a function to get data by a vector of species names with fuzzy matching
-get_species_data <- function(species_names, known_species_file, max_dist = 0.2) {
-
-  # Read the known species from the CSV file
-  known_species_df <- read.csv("known_species.csv", header = FALSE, stringsAsFactors = FALSE)
-
-  # Reading the names
-  known_species <- as.character(known_species_df$V2)
-
-  # Ensure the input vector is a character vector
-  species_names <- as.character(species_names)
-
-  # Function to get the closest match for a species name
-  get_closest_match <- function(species_name, known_species, max_dist) {
-    if (is.na(species_name) || species_name == "") {
-      return(NA)  # Ignore if matched name is NA or empty
-    }
-    distances <- stringdist::stringdist(species_name, known_species, method = "jw")
-    min_dist <- min(distances)
-    closest_match <- known_species[which.min(distances)]
-    if (min_dist <= max_dist && !is.na(closest_match) && closest_match != "") {
-      return(closest_match)
-    } else {
-      if (min_dist > 0.1) {
-      return(NA)  # Set MatchedName to NA if min_dist is greater than 0.1
-    }  
-    }
-  }
-
-  # Initialize the results data frame with species_names and MatchedName
-  results <- data.frame(
-    species_names = species_names,
-    MatchedName = sapply(species_names, get_closest_match, known_species, max_dist),
-    stringsAsFactors = FALSE
-  )
-  
-  # Remove rows with NA matched names
-  results <- results[!is.na(results$MatchedName), ]
-  
-  # Remove rows with empty matched names
-  results <- results[results$MatchedName != "", ]
-  
-  # Prepare to store the extracted data
-  final_results <- data.frame()
-
-  # Retrieve specific fields from each URL using GET requests
-  for (i in seq_along(results$MatchedName)) {
-    matched_name <- results$MatchedName[i]
-    original_name <- results$species_names[i]
-    
-    url <- paste0("https://api.herbariodigital.cl/species_list/?format=json&search=", URLencode(matched_name))
-    
-    response <- tryCatch({
-      GET(url)
-    }, error = function(e) {
-      message(paste("Error occurred while fetching data for", matched_name, ":", conditionMessage(e)))
-      return(NULL)
-    })
-    
-    if (!is.null(response) && status_code(response) == 200) {
-      content <- content(response, "text")
-      parsed_content <- fromJSON(content)
-      
-      if (length(parsed_content$results) > 0) {
-        # Extract specific fields from the results
-        fields_to_extract <- c("id","scientific_name","type")
-        extracted_data <- parsed_content$results[, fields_to_extract, drop = FALSE]
-        
-        # Add original and matched names to the extracted data
-        extracted_data$OriginalName <- original_name
-        extracted_data$MatchedName <- matched_name
-        
-        # Bind the extracted data to the final results data frame
-        final_results <- bind_rows(final_results, extracted_data)
-      } else {
-        message(paste("No results found for matched name:", matched_name))
-      }
-    } else {
-      message(paste("Request failed for URL:", url, "with status code:", status_code(response)))
-    }
-  }
-  
-  return(final_results)
-}
-
-
-##IN PROGRESS
-# Define a function to get data for a list of names
-
+require(jsonlite, quietly = T)
+require(dplyr, quietly = T)
+require(stringdist, quietly = T)
+###############################
 # Function to get the closest match for a species name
 get_closest_match <- function(species_name, max_dist = 0.15) {
-  require(stringdist)
-  known_species_df <- read.csv("known_species_id_type.csv", 
+  
+  known_species_df <- read.csv("herbarium_public_finder_view.csv", 
                                header = FALSE, 
                                stringsAsFactors = FALSE,
-                               sep = ";")
+                               sep = ",")
   known_species <- as.character(known_species_df$V2)
+  if (!(tolower(species_name) %in% tolower(known_species))) {
+    message(species_name, ": This name might not have been added to the catalog yet")
+  }
   distances <- stringdist::stringdist(tolower(species_name), 
                                       tolower(known_species), 
                                       method = "jw",
                                       q=4)
   min_dist <- min(distances)
-  val<-distances <= max_dist
   if (min_dist <= max_dist) {
     hj<-known_species[which.min(distances)]
     hj<-known_species_df[known_species_df$V2==hj,]
     hj<-cbind.data.frame(species_name, hj)
+    rownames(hj)<-NULL
     colnames(hj)<-c("input_name","id_match", "matched_name", "type")
     return(hj)
   } else if (min_dist >= max_dist) {
@@ -116,58 +30,147 @@ get_closest_match <- function(species_name, max_dist = 0.15) {
   }
 }
 
-
-  
-#####################################################################################
-
-
+################################################################################
+######get_taxonomy
 get_taxonomy <- function(species_name) {
-  require(jsonlite)
-  require(dplyr)
   param <- c("id", "scientific_name", "genus",
-             "family", "order", "class_name",
-             "division", "kingdom")
-  p <- paste0(param, ".id")
+             "family","order","class_name","division","kingdom")
+  p<-paste0(param,".id")
   api_url<-"https://api.herbariodigital.cl/species_list/?format=json&search="
-  
-  workname <- lapply(species_name, get_closest_match)
+  workname <- na_omit_list(lapply(species_name, get_closest_match))
   df <- lapply(workname, function(x) {
-    url <- paste0(api_url, 
-                  URLencode(x$matched_name)) 
-    a <- fromJSON(url)$results
-    a<-a[a$determined==T,]
-    if (!is.null(a)) {
-      if (any(a$type == "synonymy")&nrow(a)==1) {
-        b<-a$species[[1]]
-        a[,param]<-b[,param]
-      }
-      present_columns <- param[param %in% names(a)]
-      a <- a[, present_columns, drop = FALSE] 
+    if(x$type=="species"){
+      url <- paste0(api_url, 
+                    URLencode(x$matched_name)) 
+      a <- fetch_data(url, species = x$matched_name)$results
+      a<-a[a$determined==T,]
+      a <- a[, param] 
       a <- flatten(a)
       rownames(a)<-NULL
       rownames(x)<-NULL
+      x <- x[rep(seq_len(nrow(x)), each = nrow(a)), ]
       a<-cbind.data.frame(x,a)
-      return(a)
-    } 
-  })
+        return(a)
+      }else if(x$type=="synonymy"){
+        a<-get_valid_name(x, use ="nested")
+        a<-a[,param]
+        a<-flatten(a)
+        rownames(a)<-NULL
+        rownames(x)<-NULL
+        a<-cbind.data.frame(x,a)
+        return(a)
+    }} )
   
   df <- bind_rows(df, .id = "source")
-  df[, p[p %in% names(df)]] <- NULL
+  df[, p] <- NULL
   df[,"source"] <- NULL
+  rownames(df)<-NULL
   colnames(df)<-c("input_name","id_match",
-                 "matched_name","type","valid_name_id",
-                 "valid_name","kingdom","genus",
-                 "family","order","class_name","division")
-  df<-df[,c("type","input_name","id_match","matched_name",
+                "matched_name","type","valid_name_id",
+                "valid_name","kingdom","genus",
+                "family","order","class_name","division")
+df<-df[,c("type","input_name","id_match","matched_name",
           "valid_name_id","valid_name","genus","family",
           "order","class_name","division","kingdom")]
   return(df)
 }
 ########################################################################################################
+########get valid name in base of synonyms
+####use="user"
+###use="nested"
 
+get_valid_name <- function(name, use = "user") {
+  if(use=="user" & length(name)==1){
+    data <- get_closest_match(name)
+  }else if(use=="nested" & length(name)==4){
+    data<-name
+  }else{
+    stop("Error: Unvalid data format. Look at docs.")
+  }
+  colnam <- c('id','scientific_name','genus','specific_epithet','scientific_name_authorship',
+              'subspecies','ssp_authorship','variety','variety_authorship','form',
+              'form_authorship','kingdom','division','class_name','family','order',
+              'habit','determined','common_names','status','minimum_height','maximum_height',
+              'conservation_state','id_mma','region','herbarium_url')
+  if (is.null(data)) {
+    stop("Error: Unable to retrieve data for the provided name.")
+  }
+  if (data$type == "synonymy") {
+    url <- paste0("https://api.herbariodigital.cl/synonymy/", 
+                  data$id_match, "/?format=json")
+    data_fetch <- fetch_data(url, species = data$matched_name)
+    match <- as.data.frame(data_fetch[c("id", "name")])
+    colnames(match) <- c("id_synonym", "Input_Name")
+    sp <- data_fetch$species
+    if (use == "user") {
+      sp <- sp[, c("id", "name")]
+      colnames(sp) <- c("valid_id", "valid_name")
+    } else if (use == "nested") {
+      sp <- sp[, intersect(colnam, colnames(sp))]
+    }
+    output <- cbind.data.frame(match, sp)
+    return(output)
+  } else {
+    message(paste0(name, ": Input is already a valid name, not a synonym."))
+    return(NA)
+  }
+}
+########################################################################################
+get_synonyms <- function(name) {
+  if(length(name)==1){
+  name_match <- get_closest_match(name)
+  if (name_match$type == "species") {
+    url <- paste0("https://api.herbariodigital.cl/species/", 
+                  name_match$id_match, "/?format=json")
+    data <- fetch_data(url)
+    
+    # Check if data was fetched successfully
+    if (!is.null(data)) {
+      # Extract id, name, and synonyms
+      synonyms <- data$synonyms
+      if (length(synonyms) > 0) {
+        syn_names <- paste0("synonym_", seq_along(synonyms))
+        synonyms_df <- data.frame(t(synonyms))
+        colnames(synonyms_df) <- syn_names
+      } else {
+        synonyms_df <- data.frame(matrix("None synonyms found", ncol = 1, nrow = 1))
+        colnames(synonyms_df)<-"synonyms"
+      }
+      result <- data.frame(input=name,id = data$id, name = data$name, synonyms_df)
+      return(result)
+    } else {
+      return(NA)
+    }
+  } else {
+    message(paste0(name,": Input is a synonym, not a species."))
+    return(NA)
+  }}else{
+    stop("This function doesn't admit various rows.\nplease use lapply\nusage:\n   output<-lapply(species2test,get_synonyms)")
+  }
+}
 
+################################helpers
 
-
-
-########################################################################################################
-#### Define a function to get data for a single Family
+na_omit_list<-function(x){
+  is_na<-function(y){
+    !all(is.na(y))}
+  output<-Filter(is_na, x)
+  return(output)
+}
+###################################
+fetch_data <- function(url, species) {
+  require(jsonlite)
+  response <- tryCatch(
+    expr = {
+      jsondata<-fromJSON(url)
+      message(species, ": Data fetched correctly")
+      return(jsondata)
+    },
+    error = function(e) {
+      message("Error fetching data from API:", e$message)
+      return(NULL)
+    }
+  )
+  return(response)
+}
+###############################
