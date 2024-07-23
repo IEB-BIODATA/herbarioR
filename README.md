@@ -1,8 +1,29 @@
 
-**API_CONC** is an R set of functions to facilitate access to the "Catálogo de Plantas Vasculares de Chile UDEC" API. This package allows users to perform fuzzy matching on species names and retrieve detailed information about taxonomy and taxonomic status of plant species found in Chile.
+# herbarioR
 
-## Features
+<img src="man/figures/sticker.png" alt="Logo" style="float: right; height: 100px;" />
 
-- Fuzzy matching for species names.
-- Access detailed species information from the "Catálogo de Plantas Vasculares de Chile" API.
-- Extract and structure relevant data fields for further analysis.
+Paquete diseñado como interfaz de la API del herbariodigital.cl en el
+lenguaje de programación R
+
+## Capacidades
+
+Esta diseñado para dar informacion taxonomica util desde una base de
+datos. Dentro de las tareas posibles con este paquete, están:
+
+- `get_taxonomy()` Obtener taxonomía hasta división, desde una especie
+- `get_synonyms` Obtener sinonimos para nombres actualizados
+- `get_valid_name` Obtener nombres validos desde sinonimos.
+- `get_distribution` Obtener distribucion por regiones.
+- `get_voucher_data` Obtener el nombre del herbario y su respectivo
+  numero identificador, para cada voucher fotografiado.
+
+## Installation
+
+``` r
+##Instalación con DevTools
+
+install.packages("devtools")
+library(devtools)
+install_github("IEB-BIODATA/herbarioR")
+```
